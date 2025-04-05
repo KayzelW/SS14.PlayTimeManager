@@ -1,3 +1,4 @@
+using System.Collections.Frozen;
 using System.Security.Principal;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Filters;
@@ -8,7 +9,7 @@ namespace PlayTimeManager.Attributes;
 public sealed class RemoteAuthAttribute(string type) : ActionFilterAttribute
 {
     private bool _isLoaded = false;
-    private string _secToken;
+    private HashSet<string>? _secTokens;
 
     const string Method = "Bearer";
 
@@ -16,7 +17,7 @@ public sealed class RemoteAuthAttribute(string type) : ActionFilterAttribute
     {
         _isLoaded = true;
         var config = serviceProvider.GetRequiredService<IConfiguration>();
-        _secToken = config["RemoteAuth:" + type]!;
+        _secTokens = config.GetValue<HashSet<string>>("RemoteAuth:" + type)!;
     }
 
     public override void OnActionExecuting(ActionExecutingContext context)
@@ -27,13 +28,14 @@ public sealed class RemoteAuthAttribute(string type) : ActionFilterAttribute
         if (!_isLoaded)
             Load(context.HttpContext.RequestServices);
 
-        if (string.IsNullOrEmpty(_secToken))
+        if (_secTokens == null)
         {
             context.Result = Err("В конфиге отсутствует секция RemoteAuth:" + type, 401U);
             return;
         }
 
-        if (!request.Headers.TryGetValue("Authorization", out var auth) || auth.Count != 1)
+        var auth = request.Headers.Authorization;
+        if (auth.Count != 1)
         {
             response.Headers.Append("WWW-Authenticate", new StringValues(Method));
             context.Result = Err("Не авторизован", 401U);
@@ -48,14 +50,14 @@ public sealed class RemoteAuthAttribute(string type) : ActionFilterAttribute
             return;
         }
 
-        if (!String.Equals(authorization[0], Method, StringComparison.InvariantCultureIgnoreCase))
+        if (!string.Equals(authorization[0], Method, StringComparison.InvariantCultureIgnoreCase))
         {
             response.Headers.Append("WWW-Authenticate", new StringValues(Method));
             context.Result = Err("Не поддерживается тип авторизации", 401U);
             return;
         }
 
-        if (authorization[1] != _secToken)
+        if (!_secTokens.Contains(authorization[1]))
         {
             response.Headers.Append("WWW-Authenticate", new StringValues(Method));
             context.Result = Err("Не авторизован token", 401U);

@@ -17,7 +17,7 @@ public class PlayTimeController : ControllerBase
     [HttpGet]
     public async Task<ActionResult<List<PlayTime>>> GetPlayTime([FromQuery] Guid playerId) 
     {
-        var playtimes = await (_dbContext.GetPlayTimeAsync(playerId).ToListAsync());
+        var playtimes = await _dbContext.GetPlayTimeAsync(playerId).ToListAsync();
         return playtimes;
     }
 
