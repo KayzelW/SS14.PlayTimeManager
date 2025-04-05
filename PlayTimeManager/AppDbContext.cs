@@ -14,12 +14,12 @@ public class AppDbContext
         var connectionString = configuration.GetConnectionString("postgres")!;
         DataSource = NpgsqlDataSource.Create(connectionString);
     }
-    
+
     public async IAsyncEnumerable<PlayTime> GetPlayTimeAsync(Guid playerId)
     {
         await using var cmd =
             DataSource.CreateCommand(
-                @"SELECT 'player_id', 'tracker', 'time_spent' FROM playtime WHERE player_id = @player_id");
+                @"SELECT player_id, tracker, time_spent FROM play_time WHERE player_id = @player_id");
         cmd.Parameters.Add(new NpgsqlParameter("@player_id", playerId));
         await using var reader = await cmd.ExecuteReaderAsync();
         while (await reader.ReadAsync())
@@ -35,25 +35,33 @@ public class AppDbContext
 
     public async Task SavePlayTimeAsync(IEnumerable<PlayTime> playTimes)
     {
-        await using var cmd = DataSource.CreateCommand(
-            @"INSERT INTO playtime('player_id', 'tracker', 'time_spent') VALUES (@player_id, @tracker, @time_spent)
-                ON CONFLICT('player_id', 'tracker') DO UPDATE SET 'time_spent' = @time_spent");
+        await using var conn = DataSource.CreateConnection();
+        await conn.OpenAsync();
 
-        await cmd.PrepareAsync();
-        var playerIdParam = new NpgsqlParameter() { ParameterName = "@player_id" };
+        await using var cmd = new NpgsqlCommand(
+            @"INSERT INTO play_time(player_id, tracker, time_spent) 
+          VALUES (@player_id, @tracker, @time_spent)
+          ON CONFLICT(player_id, tracker) 
+          DO UPDATE SET time_spent = @time_spent",
+            conn);
+
+        var playerIdParam = new NpgsqlParameter("@player_id", NpgsqlTypes.NpgsqlDbType.Uuid);
         cmd.Parameters.Add(playerIdParam);
 
-        var trackerParam = new NpgsqlParameter() { ParameterName = "@tracker" };
+        var trackerParam = new NpgsqlParameter("@tracker", NpgsqlTypes.NpgsqlDbType.Text);
         cmd.Parameters.Add(trackerParam);
 
-        var timeSpentParam = new NpgsqlParameter() { ParameterName = "@time_spent" };
+        var timeSpentParam = new NpgsqlParameter("@time_spent", NpgsqlTypes.NpgsqlDbType.Interval);
         cmd.Parameters.Add(timeSpentParam);
+
+        await cmd.PrepareAsync();
 
         foreach (var playTime in playTimes)
         {
             playerIdParam.Value = playTime.PlayerId;
             trackerParam.Value = playTime.Tracker;
             timeSpentParam.Value = playTime.TimeSpent;
+
             await cmd.ExecuteNonQueryAsync();
         }
     }
