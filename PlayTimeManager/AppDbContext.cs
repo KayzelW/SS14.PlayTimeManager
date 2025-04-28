@@ -40,9 +40,9 @@ public class AppDbContext
 
         await using var cmd = new NpgsqlCommand(
             @"INSERT INTO play_time(player_id, tracker, time_spent) 
-          VALUES (@player_id, @tracker, @time_spent)
-          ON CONFLICT(player_id, tracker) 
-          DO UPDATE SET time_spent = @time_spent",
+            VALUES (@player_id, @tracker, @time_spent)
+            ON CONFLICT(player_id, tracker) 
+            DO UPDATE SET time_spent = GREATEST(play_time.time_spent, EXCLUDED.time_spent);",
             conn);
 
         var playerIdParam = new NpgsqlParameter("@player_id", NpgsqlTypes.NpgsqlDbType.Uuid);
